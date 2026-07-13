@@ -167,13 +167,23 @@ test('non approved and unsupported templates are unavailable for selection', fun
                 ],
                 [
                     'id' => 'tpl-buttons',
-                    'name' => 'button_template',
+                    'name' => 'dynamic_button_template',
                     'language' => 'id',
                     'category' => 'UTILITY',
                     'status' => 'APPROVED',
                     'components' => [
                         ['type' => 'BODY', 'text' => 'Halo'],
-                        ['type' => 'BUTTONS', 'buttons' => [['type' => 'QUICK_REPLY', 'text' => 'Ya']]],
+                        [
+                            'type' => 'BUTTONS',
+                            'buttons' => [
+                                [
+                                    'type' => 'URL',
+                                    'text' => 'Open',
+                                    'url' => 'https://example.test/{{1}}',
+                                    'example' => ['https://example.test/abc'],
+                                ],
+                            ],
+                        ],
                     ],
                 ],
             ],
@@ -218,6 +228,77 @@ test('approved templates with fixed image headers are available for selection', 
     expect($template->is_supported)->toBeTrue()
         ->and($template->is_available)->toBeTrue()
         ->and($template->body_variables)->toBe(['nama_customer']);
+});
+
+test('approved templates with fixed image headers and static buttons are available for selection', function () {
+    Http::fake([
+        'graph.example.test/v23.0/waba-123/message_templates*' => Http::response([
+            'data' => [
+                [
+                    'id' => 'tpl-static-buttons',
+                    'name' => 'static_button_template',
+                    'language' => 'id',
+                    'category' => 'MARKETING',
+                    'status' => 'APPROVED',
+                    'components' => [
+                        ['type' => 'HEADER', 'format' => 'IMAGE'],
+                        ['type' => 'BODY', 'text' => 'Halo customer.'],
+                        [
+                            'type' => 'BUTTONS',
+                            'buttons' => [
+                                ['type' => 'URL', 'text' => 'Booking Chaodu', 'url' => 'https://example.test/chaodu'],
+                                ['type' => 'URL', 'text' => 'Booking Ziarah', 'url' => 'https://example.test/ziarah'],
+                            ],
+                        ],
+                    ],
+                ],
+            ],
+        ]),
+    ]);
+
+    $this->post(route('templates.sync'));
+
+    $template = WhatsappTemplate::query()->where('meta_template_id', 'tpl-static-buttons')->firstOrFail();
+
+    expect($template->is_supported)->toBeTrue()
+        ->and($template->is_available)->toBeTrue();
+});
+
+test('templates with dynamic button parameters are unavailable for selection', function () {
+    Http::fake([
+        'graph.example.test/v23.0/waba-123/message_templates*' => Http::response([
+            'data' => [
+                [
+                    'id' => 'tpl-dynamic-button',
+                    'name' => 'dynamic_button_template',
+                    'language' => 'id',
+                    'category' => 'UTILITY',
+                    'status' => 'APPROVED',
+                    'components' => [
+                        ['type' => 'BODY', 'text' => 'Mohon isi feedback.'],
+                        [
+                            'type' => 'BUTTONS',
+                            'buttons' => [
+                                [
+                                    'type' => 'URL',
+                                    'text' => 'Isi Penilaian',
+                                    'url' => 'https://example.test/review{{1}}',
+                                    'example' => ['https://example.test/review?customer_id=123'],
+                                ],
+                            ],
+                        ],
+                    ],
+                ],
+            ],
+        ]),
+    ]);
+
+    $this->post(route('templates.sync'));
+
+    $template = WhatsappTemplate::query()->where('meta_template_id', 'tpl-dynamic-button')->firstOrFail();
+
+    expect($template->is_supported)->toBeFalse()
+        ->and($template->is_available)->toBeFalse();
 });
 
 test('existing templates are updated and missing templates are marked unavailable', function () {

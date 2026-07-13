@@ -24,7 +24,7 @@ class TemplateSupportInspector
                 $supported = false;
             }
 
-            if ($type === 'BUTTONS') {
+            if ($type === 'BUTTONS' && $this->hasUnsupportedButtons($component)) {
                 $supported = false;
             }
 
@@ -53,6 +53,37 @@ class TemplateSupportInspector
         }
 
         return ! in_array($format, ['TEXT', 'IMAGE'], true);
+    }
+
+    /**
+     * @param  array<string, mixed>  $component
+     */
+    private function hasUnsupportedButtons(array $component): bool
+    {
+        $buttons = $component['buttons'] ?? [];
+
+        if (! is_array($buttons)) {
+            return true;
+        }
+
+        foreach ($buttons as $button) {
+            if (! is_array($button)) {
+                return true;
+            }
+
+            $text = (string) ($button['text'] ?? '');
+            $url = (string) ($button['url'] ?? '');
+            $phoneNumber = (string) ($button['phone_number'] ?? '');
+
+            if (
+                preg_match($this->variablePattern(), $text.$url.$phoneNumber) === 1
+                || array_key_exists('example', $button)
+            ) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
