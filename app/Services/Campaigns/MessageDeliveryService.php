@@ -7,13 +7,18 @@ use App\Models\CampaignRecipient;
 use App\Models\CampaignVariableMapping;
 use App\Models\MessageAttempt;
 use App\Services\Meta\MetaApiException;
+use App\Services\Meta\WhatsAppMediaClient;
 use App\Services\Meta\WhatsAppMessageClient;
 use Carbon\CarbonInterface;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 
 class MessageDeliveryService
 {
-    public function __construct(private readonly WhatsAppMessageClient $client) {}
+    public function __construct(
+        private readonly WhatsAppMessageClient $client,
+        private readonly WhatsAppMediaClient $mediaClient,
+    ) {}
 
     public function deliver(int $recipientId): void
     {
@@ -139,7 +144,7 @@ class MessageDeliveryService
     }
 
     /**
-     * @return array{type: string, link: string}|null
+     * @return array{type: string, id: string}|null
      */
     private function headerMedia(Campaign $campaign): ?array
     {
@@ -166,10 +171,13 @@ class MessageDeliveryService
                 return null;
             }
 
-            return [
-                'type' => $format,
-                'link' => $link,
-            ];
+            $mediaId = Cache::remember(
+                'whatsapp-header-media-id:'.sha1($link),
+                now()->addDays(25),
+                fn (): string => $this->mediaClient->uploadImageFromLink($link),
+            );
+
+            return ['type' => $format, 'id' => $mediaId];
         }
 
         return null;

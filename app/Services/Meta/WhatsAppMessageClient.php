@@ -10,7 +10,7 @@ class WhatsAppMessageClient
 
     /**
      * @param  array<int, array{name: string|null, value: string}>  $bodyParameters
-     * @param  array{type: string, link: string}|null  $headerMedia
+     * @param  array{type: string, id?: string, link?: string}|null  $headerMedia
      * @return array{ok: bool, status: int|null, meta_message_id: string|null, request: array<string, mixed>, response: array<string, mixed>|null, error_code: string|null, error_message: string|null}
      */
     public function sendTemplate(
@@ -68,7 +68,7 @@ class WhatsAppMessageClient
 
     /**
      * @param  array<int, array{name: string|null, value: string}>  $bodyParameters
-     * @param  array{type: string, link: string}|null  $headerMedia
+     * @param  array{type: string, id?: string, link?: string}|null  $headerMedia
      * @return array<string, mixed>
      */
     private function payload(
@@ -87,14 +87,15 @@ class WhatsAppMessageClient
 
         if ($headerMedia !== null) {
             $mediaType = strtolower($headerMedia['type']);
+            $mediaValue = is_string($headerMedia['id'] ?? null)
+                ? ['id' => $headerMedia['id']]
+                : ['link' => $headerMedia['link'] ?? ''];
 
             $components[] = [
                 'type' => 'header',
                 'parameters' => [[
                     'type' => $mediaType,
-                    $mediaType => [
-                        'link' => $headerMedia['link'],
-                    ],
+                    $mediaType => $mediaValue,
                 ]],
             ];
         }

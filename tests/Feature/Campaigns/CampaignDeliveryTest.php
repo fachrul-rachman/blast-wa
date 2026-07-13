@@ -9,6 +9,7 @@ use App\Models\MessageAttempt;
 use App\Models\WhatsappTemplate;
 use App\Services\Campaigns\MessageDeliveryService;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
 
@@ -22,6 +23,7 @@ beforeEach(function () {
     CampaignRecipient::query()->delete();
     Campaign::query()->delete();
     WhatsappTemplate::query()->delete();
+    Cache::flush();
 
     actingAs(Admin::factory()->create());
 });
@@ -99,6 +101,12 @@ test('recipient job sends image header media parameter when template has image h
     ]);
 
     Http::fake([
+        'scontent.whatsapp.net/example.jpg' => Http::response('fake-image-content', 200, [
+            'Content-Type' => 'image/jpeg',
+        ]),
+        'graph.facebook.com/v23.0/phone-id/media' => Http::response([
+            'id' => 'media-id-123',
+        ]),
         'graph.facebook.com/v23.0/phone-id/messages' => Http::response([
             'messages' => [
                 ['id' => 'wamid.image'],
@@ -141,15 +149,18 @@ test('recipient job sends image header media parameter when template has image h
 
     (new SendCampaignRecipientJob($recipient->id))->handle(app(MessageDeliveryService::class));
 
-    Http::assertSent(fn ($request) => $request->data()['template']['components'][0] === [
-        'type' => 'header',
-        'parameters' => [[
-            'type' => 'image',
-            'image' => [
-                'link' => 'https://scontent.whatsapp.net/example.jpg',
-            ],
-        ]],
-    ]);
+    Http::assertSent(fn ($request) => str_ends_with($request->url(), '/messages')
+        && $request->data()['template']['components'][0] === [
+            'type' => 'header',
+            'parameters' => [[
+                'type' => 'image',
+                'image' => [
+                    'id' => 'media-id-123',
+                ],
+            ]],
+        ]);
+
+    Http::assertSent(fn ($request) => $request->url() === 'https://graph.facebook.com/v23.0/phone-id/media');
 });
 
 test('duplicate job execution does not resend an accepted recipient', function () {
