@@ -10,6 +10,7 @@ class WhatsAppMessageClient
 
     /**
      * @param  array<int, array{name: string|null, value: string}>  $bodyParameters
+     * @param  array{type: string, link: string}|null  $headerMedia
      * @return array{ok: bool, status: int|null, meta_message_id: string|null, request: array<string, mixed>, response: array<string, mixed>|null, error_code: string|null, error_message: string|null}
      */
     public function sendTemplate(
@@ -17,6 +18,7 @@ class WhatsAppMessageClient
         string $templateName,
         string $languageCode,
         array $bodyParameters,
+        ?array $headerMedia = null,
     ): array {
         $baseUrl = rtrim((string) config('services.whatsapp.graph_api_base_url'), '/');
         $phoneNumberId = config('services.whatsapp.phone_number_id');
@@ -26,7 +28,7 @@ class WhatsAppMessageClient
             throw new MetaApiException('Meta WhatsApp sending credentials are not configured.');
         }
 
-        $payload = $this->payload($to, $templateName, $languageCode, $bodyParameters);
+        $payload = $this->payload($to, $templateName, $languageCode, $bodyParameters, $headerMedia);
         $response = $this->http
             ->withToken($token)
             ->acceptJson()
@@ -66,17 +68,39 @@ class WhatsAppMessageClient
 
     /**
      * @param  array<int, array{name: string|null, value: string}>  $bodyParameters
+     * @param  array{type: string, link: string}|null  $headerMedia
      * @return array<string, mixed>
      */
-    private function payload(string $to, string $templateName, string $languageCode, array $bodyParameters): array
-    {
+    private function payload(
+        string $to,
+        string $templateName,
+        string $languageCode,
+        array $bodyParameters,
+        ?array $headerMedia,
+    ): array {
         $template = [
             'name' => $templateName,
             'language' => ['code' => $languageCode],
         ];
 
+        $components = [];
+
+        if ($headerMedia !== null) {
+            $mediaType = strtolower($headerMedia['type']);
+
+            $components[] = [
+                'type' => 'header',
+                'parameters' => [[
+                    'type' => $mediaType,
+                    $mediaType => [
+                        'link' => $headerMedia['link'],
+                    ],
+                ]],
+            ];
+        }
+
         if ($bodyParameters !== []) {
-            $template['components'] = [[
+            $components[] = [
                 'type' => 'body',
                 'parameters' => array_map(
                     fn (array $parameter): array => array_filter([
@@ -86,7 +110,11 @@ class WhatsAppMessageClient
                     ], fn (mixed $value): bool => $value !== null && $value !== ''),
                     $bodyParameters,
                 ),
-            ]];
+            ];
+        }
+
+        if ($components !== []) {
+            $template['components'] = $components;
         }
 
         return [

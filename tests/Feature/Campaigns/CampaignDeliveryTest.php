@@ -91,6 +91,67 @@ test('recipient job sends mapped template payload and stores accepted attempt', 
     );
 });
 
+test('recipient job sends image header media parameter when template has image header', function () {
+    config([
+        'services.whatsapp.graph_api_base_url' => 'https://graph.facebook.com/v23.0',
+        'services.whatsapp.phone_number_id' => 'phone-id',
+        'services.whatsapp.access_token' => 'secret-token',
+    ]);
+
+    Http::fake([
+        'graph.facebook.com/v23.0/phone-id/messages' => Http::response([
+            'messages' => [
+                ['id' => 'wamid.image'],
+            ],
+        ]),
+    ]);
+
+    $template = WhatsappTemplate::factory()->create([
+        'name' => 'image_header_template',
+        'language_code' => 'id',
+        'body_text' => 'Halo customer.',
+        'body_variables' => [],
+        'components' => [
+            [
+                'type' => 'HEADER',
+                'format' => 'IMAGE',
+                'example' => [
+                    'header_handle' => ['https://scontent.whatsapp.net/example.jpg'],
+                ],
+            ],
+            ['type' => 'BODY', 'text' => 'Halo customer.'],
+        ],
+    ]);
+
+    $campaign = Campaign::factory()->create([
+        'whatsapp_template_id' => $template->id,
+        'template_snapshot' => [
+            'id' => $template->id,
+            'meta_template_id' => $template->meta_template_id,
+            'name' => $template->name,
+            'language_code' => $template->language_code,
+            'category' => $template->category,
+            'body_text' => $template->body_text,
+            'body_variables' => $template->body_variables,
+            'components' => $template->components,
+        ],
+        'status' => Campaign::STATUS_PROCESSING,
+    ]);
+    $recipient = deliveryRecipient($campaign, 2, 'valid', 'queued', '6281234567890');
+
+    (new SendCampaignRecipientJob($recipient->id))->handle(app(MessageDeliveryService::class));
+
+    Http::assertSent(fn ($request) => $request->data()['template']['components'][0] === [
+        'type' => 'header',
+        'parameters' => [[
+            'type' => 'image',
+            'image' => [
+                'link' => 'https://scontent.whatsapp.net/example.jpg',
+            ],
+        ]],
+    ]);
+});
+
 test('duplicate job execution does not resend an accepted recipient', function () {
     config([
         'services.whatsapp.graph_api_base_url' => 'https://graph.facebook.com/v23.0',

@@ -52,6 +52,12 @@ class TemplateSupportInspector
             return true;
         }
 
+        if ($format === 'IMAGE') {
+            $handle = data_get($component, 'example.header_handle.0');
+
+            return ! is_string($handle) || blank($handle);
+        }
+
         return ! in_array($format, ['TEXT', 'IMAGE'], true);
     }
 

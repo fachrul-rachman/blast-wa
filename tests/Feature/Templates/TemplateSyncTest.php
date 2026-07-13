@@ -241,7 +241,13 @@ test('approved templates with fixed image headers and static buttons are availab
                     'category' => 'MARKETING',
                     'status' => 'APPROVED',
                     'components' => [
-                        ['type' => 'HEADER', 'format' => 'IMAGE'],
+                        [
+                            'type' => 'HEADER',
+                            'format' => 'IMAGE',
+                            'example' => [
+                                'header_handle' => ['https://scontent.whatsapp.net/static-button.jpg'],
+                            ],
+                        ],
                         ['type' => 'BODY', 'text' => 'Halo customer.'],
                         [
                             'type' => 'BUTTONS',

@@ -39,6 +39,7 @@ class MessageDeliveryService
             $attemptNumber = $recipient->attempt_count + 1;
             $attemptedAt = now();
             $parameters = $this->bodyParameters($recipient);
+            $headerMedia = $this->headerMedia($recipient->campaign);
 
             $recipient->update([
                 'attempt_count' => $attemptNumber,
@@ -50,6 +51,7 @@ class MessageDeliveryService
                 (string) $recipient->campaign->template_snapshot['name'],
                 (string) $recipient->campaign->template_snapshot['language_code'],
                 $parameters,
+                $headerMedia,
             );
 
             if ($result['ok']) {
@@ -134,6 +136,43 @@ class MessageDeliveryService
         }
 
         return $parameters;
+    }
+
+    /**
+     * @return array{type: string, link: string}|null
+     */
+    private function headerMedia(Campaign $campaign): ?array
+    {
+        $components = $campaign->template_snapshot['components'] ?? [];
+
+        if (! is_array($components)) {
+            return null;
+        }
+
+        foreach ($components as $component) {
+            if (! is_array($component) || strtoupper((string) ($component['type'] ?? '')) !== 'HEADER') {
+                continue;
+            }
+
+            $format = strtolower((string) ($component['format'] ?? ''));
+
+            if ($format !== 'image') {
+                return null;
+            }
+
+            $link = data_get($component, 'example.header_handle.0');
+
+            if (! is_string($link) || blank($link)) {
+                return null;
+            }
+
+            return [
+                'type' => $format,
+                'link' => $link,
+            ];
+        }
+
+        return null;
     }
 
     /**
