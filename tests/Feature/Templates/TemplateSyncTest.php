@@ -166,14 +166,14 @@ test('non approved and unsupported templates are unavailable for selection', fun
                     ],
                 ],
                 [
-                    'id' => 'tpl-media',
-                    'name' => 'media_header_template',
+                    'id' => 'tpl-buttons',
+                    'name' => 'button_template',
                     'language' => 'id',
                     'category' => 'UTILITY',
                     'status' => 'APPROVED',
                     'components' => [
-                        ['type' => 'HEADER', 'format' => 'IMAGE'],
                         ['type' => 'BODY', 'text' => 'Halo'],
+                        ['type' => 'BUTTONS', 'buttons' => [['type' => 'QUICK_REPLY', 'text' => 'Ya']]],
                     ],
                 ],
             ],
@@ -184,6 +184,40 @@ test('non approved and unsupported templates are unavailable for selection', fun
 
     expect(WhatsappTemplate::query()->where('is_available', true)->count())->toBe(0)
         ->and(WhatsappTemplate::query()->where('is_supported', false)->count())->toBe(1);
+});
+
+test('approved templates with fixed image headers are available for selection', function () {
+    Http::fake([
+        'graph.example.test/v23.0/waba-123/message_templates*' => Http::response([
+            'data' => [
+                [
+                    'id' => 'tpl-image-header',
+                    'name' => 'image_header_template',
+                    'language' => 'id',
+                    'category' => 'MARKETING',
+                    'status' => 'APPROVED',
+                    'components' => [
+                        [
+                            'type' => 'HEADER',
+                            'format' => 'IMAGE',
+                            'example' => [
+                                'header_handle' => ['https://scontent.whatsapp.net/example.jpg'],
+                            ],
+                        ],
+                        ['type' => 'BODY', 'text' => 'Halo {{nama_customer}}'],
+                    ],
+                ],
+            ],
+        ]),
+    ]);
+
+    $this->post(route('templates.sync'));
+
+    $template = WhatsappTemplate::query()->where('meta_template_id', 'tpl-image-header')->firstOrFail();
+
+    expect($template->is_supported)->toBeTrue()
+        ->and($template->is_available)->toBeTrue()
+        ->and($template->body_variables)->toBe(['nama_customer']);
 });
 
 test('existing templates are updated and missing templates are marked unavailable', function () {

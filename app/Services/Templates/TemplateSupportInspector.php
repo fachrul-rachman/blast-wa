@@ -48,7 +48,11 @@ class TemplateSupportInspector
         $format = strtoupper((string) ($component['format'] ?? 'TEXT'));
         $text = (string) ($component['text'] ?? '');
 
-        return $format !== 'TEXT' || preg_match($this->variablePattern(), $text) === 1;
+        if (preg_match($this->variablePattern(), $text) === 1) {
+            return true;
+        }
+
+        return ! in_array($format, ['TEXT', 'IMAGE'], true);
     }
 
     /**
