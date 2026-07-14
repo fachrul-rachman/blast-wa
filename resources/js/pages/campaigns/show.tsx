@@ -9,6 +9,7 @@ import {
     Trash2,
     Upload,
 } from 'lucide-react';
+import { useEffect } from 'react';
 import type { FormEvent, ReactNode } from 'react';
 
 import AppLayout from '@/layouts/app-layout';
@@ -66,6 +67,12 @@ type DeliverySummary = {
     failed: number;
     skipped: number;
 };
+type DailyQuota = {
+    limit: number;
+    used: number;
+    remaining: number;
+    resets_at: string | null;
+};
 type Paginator<T> = {
     data: T[];
     current_page: number;
@@ -90,6 +97,7 @@ type PageProps = {
     campaign: Campaign;
     recipients: Paginator<Recipient>;
     delivery_summary: DeliverySummary;
+    daily_quota: DailyQuota;
     variable_mappings: VariableMapping[];
     previews: Preview[];
     errors?: Record<string, string>;
@@ -121,6 +129,7 @@ export default function CampaignsShow({
     campaign,
     recipients,
     delivery_summary,
+    daily_quota,
     variable_mappings,
     previews,
 }: PageProps) {
@@ -159,6 +168,33 @@ export default function CampaignsShow({
         scheduled_at: toDateTimeLocal(campaign.scheduled_at),
         consent_confirmed: false,
     });
+    const shouldAutoRefresh = [
+        'scheduled',
+        'processing',
+        'failed',
+        'completed',
+    ].includes(campaign.status);
+
+    useEffect(() => {
+        if (!shouldAutoRefresh) {
+            return;
+        }
+
+        const interval = window.setInterval(() => {
+            router.get(window.location.href, {}, {
+                only: [
+                    'campaign',
+                    'recipients',
+                    'delivery_summary',
+                    'daily_quota',
+                    'errors',
+                ],
+                preserveState: true,
+            });
+        }, 30000);
+
+        return () => window.clearInterval(interval);
+    }, [shouldAutoRefresh]);
 
     function upload(event: FormEvent<HTMLFormElement>) {
         event.preventDefault();
@@ -215,7 +251,6 @@ export default function CampaignsShow({
         router.post(`/campaigns/${campaign.id}/retry-failed`);
     }
 
-    const duplicateGroups = groupDuplicates(recipients.data);
     const isDraft = campaign.status === 'draft';
     const canSend =
         isDraft &&
@@ -260,6 +295,7 @@ export default function CampaignsShow({
                                 <ImportSummaryCards
                                     summary={campaign.import_summary}
                                 />
+                                <DailyQuotaPanel quota={daily_quota} />
                                 <DeliverySummaryCards
                                     summary={delivery_summary}
                                 />
@@ -272,12 +308,6 @@ export default function CampaignsShow({
                                             props.errors?.campaign
                                         }
                                         onSubmit={updateMapping}
-                                    />
-                                )}
-                                {isDraft && duplicateGroups.length > 0 && (
-                                    <DuplicatePanel
-                                        campaignId={campaign.id}
-                                        groups={duplicateGroups}
                                     />
                                 )}
                                 {isDraft && variables.length > 0 && (
@@ -406,9 +436,6 @@ function ImportSummaryCards({ summary }: { summary: ImportSummary }) {
     const items = [
         ['Total', summary.total_rows],
         ['Valid unique', summary.valid_rows],
-        ['Invalid', summary.invalid_rows],
-        ['Duplicates', summary.duplicate_rows],
-        ['Missing data', summary.missing_data_rows],
         ['Send eligible', summary.send_eligible_rows],
     ];
 
@@ -427,16 +454,32 @@ function ImportSummaryCards({ summary }: { summary: ImportSummary }) {
     );
 }
 
+function DailyQuotaPanel({ quota }: { quota: DailyQuota }) {
+    return (
+        <section className="rounded-lg border border-zinc-200 bg-white p-5">
+            <h2 className="text-base font-semibold">Daily Sending Limit</h2>
+            <div className="mt-4 grid gap-3 text-sm sm:grid-cols-3">
+                <Info label="Used">{quota.used}</Info>
+                <Info label="Remaining">{quota.remaining}</Info>
+                <Info label="Limit">{quota.limit}</Info>
+            </div>
+            {quota.remaining === 0 && quota.resets_at && (
+                <p className="mt-3 text-sm text-zinc-600">
+                    Sending will continue automatically after{' '}
+                    {new Date(quota.resets_at).toLocaleString()}.
+                </p>
+            )}
+        </section>
+    );
+}
+
 function DeliverySummaryCards({ summary }: { summary: DeliverySummary }) {
     const items = [
         ['Queued', summary.queued],
         ['Accepted', summary.accepted],
-        ['Sent', summary.sent],
         ['Delivered', summary.delivered],
         ['Read', summary.read],
         ['Failed', summary.failed],
-        ['Skipped', summary.skipped],
-        ['Pending', summary.pending],
     ];
 
     return (
@@ -496,68 +539,6 @@ function ColumnMappingPanel({
                 </button>
             </form>
             {error && <p className="mt-3 text-sm text-red-700">{error}</p>}
-        </section>
-    );
-}
-
-function DuplicatePanel({
-    campaignId,
-    groups,
-}: {
-    campaignId: number;
-    groups: Recipient[][];
-}) {
-    function chooseWinner(groupKey: string, winnerId: number) {
-        router.patch(`/campaigns/${campaignId}/duplicates`, {
-            duplicate_group_key: groupKey,
-            winner_id: winnerId,
-        });
-    }
-
-    return (
-        <section className="rounded-lg border border-zinc-200 bg-white p-5">
-            <h2 className="text-base font-semibold">Duplicate Review</h2>
-            <div className="mt-4 space-y-4">
-                {groups.map((group, index) => {
-                    const groupKey =
-                        group[0]?.duplicate_group_key ?? `group-${index}`;
-
-                    return (
-                        <div
-                            key={groupKey}
-                            className="rounded-md border border-zinc-200 p-4"
-                        >
-                            <p className="text-sm font-medium">{groupKey}</p>
-                            <div className="mt-3 space-y-2">
-                                {group.map((recipient) => (
-                                    <label
-                                        key={recipient.id}
-                                        className="flex items-center justify-between gap-4 rounded-md bg-zinc-50 px-3 py-2 text-sm"
-                                    >
-                                        <span>
-                                            Row {recipient.source_row_number} -{' '}
-                                            {recipient.name ?? '-'}
-                                        </span>
-                                        <button
-                                            type="button"
-                                            onClick={() =>
-                                                chooseWinner(
-                                                    recipient.duplicate_group_key ??
-                                                        '',
-                                                    recipient.id,
-                                                )
-                                            }
-                                            className="rounded-md border border-zinc-300 px-2 py-1 text-xs font-medium hover:bg-white"
-                                        >
-                                            Keep
-                                        </button>
-                                    </label>
-                                ))}
-                            </div>
-                        </div>
-                    );
-                })}
-            </div>
         </section>
     );
 }
@@ -905,6 +886,12 @@ function ColumnSelect({
 function RecipientTable({ recipients }: { recipients: Recipient[] }) {
     return (
         <section className="overflow-hidden rounded-lg border border-zinc-200 bg-white">
+            <div className="border-b border-zinc-200 p-4">
+                <h2 className="text-base font-semibold">Valid Recipients</h2>
+                <p className="mt-1 text-sm text-zinc-600">
+                    Only valid recipients are shown here.
+                </p>
+            </div>
             <table className="w-full text-left text-sm">
                 <thead className="border-b border-zinc-200 bg-zinc-100 text-xs text-zinc-600 uppercase">
                     <tr>
@@ -923,7 +910,7 @@ function RecipientTable({ recipients }: { recipients: Recipient[] }) {
                                 colSpan={6}
                                 className="px-4 py-8 text-center text-zinc-600"
                             >
-                                No recipients found.
+                                No valid recipients found.
                             </td>
                         </tr>
                     ) : (
@@ -1038,26 +1025,6 @@ function Info({ label, children }: { label: string; children: ReactNode }) {
             <dd className="mt-1 font-medium">{children}</dd>
         </div>
     );
-}
-
-function groupDuplicates(recipients: Recipient[]): Recipient[][] {
-    const groups = new Map<string, Recipient[]>();
-
-    for (const recipient of recipients) {
-        if (
-            recipient.validation_status !== 'duplicate' ||
-            !recipient.duplicate_group_key
-        ) {
-            continue;
-        }
-
-        groups.set(recipient.duplicate_group_key, [
-            ...(groups.get(recipient.duplicate_group_key) ?? []),
-            recipient,
-        ]);
-    }
-
-    return Array.from(groups.values());
 }
 
 function toDateTimeLocal(value?: string | null): string {

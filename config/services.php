@@ -45,6 +45,8 @@ return [
         'send_delay_seconds' => (int) env('WHATSAPP_SEND_DELAY_SECONDS', 1),
         'retry_backoff_seconds' => env('WHATSAPP_RETRY_BACKOFF_SECONDS', '60,300,900'),
         'max_attempts' => (int) env('WHATSAPP_MAX_ATTEMPTS', 3),
+        'daily_unique_recipient_limit' => (int) env('WHATSAPP_DAILY_UNIQUE_RECIPIENT_LIMIT', 250),
+        'daily_unique_recipient_limit_enabled' => (bool) env('WHATSAPP_DAILY_UNIQUE_RECIPIENT_LIMIT_ENABLED', true),
     ],
 
 ];

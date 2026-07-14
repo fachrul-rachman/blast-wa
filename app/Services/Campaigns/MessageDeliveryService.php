@@ -18,6 +18,7 @@ class MessageDeliveryService
     public function __construct(
         private readonly WhatsAppMessageClient $client,
         private readonly WhatsAppMediaClient $mediaClient,
+        private readonly WhatsappDailyRecipientQuota $recipientQuota,
     ) {}
 
     public function deliver(int $recipientId): void
@@ -40,6 +41,8 @@ class MessageDeliveryService
 
                 return false;
             }
+
+            $this->recipientQuota->assertAvailable((string) $recipient->phone_normalized);
 
             $attemptNumber = $recipient->attempt_count + 1;
             $attemptedAt = now();
@@ -69,6 +72,7 @@ class MessageDeliveryService
                     'failure_message' => null,
                 ]);
 
+                $this->recipientQuota->recordAccepted($recipient, $attemptedAt);
                 $this->recordAttempt($recipient, $attemptNumber, $attemptedAt, MessageAttempt::RESULT_ACCEPTED, $result);
                 $this->completeCampaignIfDone($recipient->campaign);
 

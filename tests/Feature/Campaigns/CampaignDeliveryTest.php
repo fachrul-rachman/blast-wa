@@ -6,7 +6,9 @@ use App\Models\Campaign;
 use App\Models\CampaignRecipient;
 use App\Models\CampaignVariableMapping;
 use App\Models\MessageAttempt;
+use App\Models\WhatsappDeliveryQuotaUsage;
 use App\Models\WhatsappTemplate;
+use App\Services\Campaigns\DailyRecipientQuotaExceeded;
 use App\Services\Campaigns\MessageDeliveryService;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Illuminate\Support\Facades\Cache;
@@ -19,6 +21,7 @@ uses(DatabaseTransactions::class);
 
 beforeEach(function () {
     MessageAttempt::query()->delete();
+    WhatsappDeliveryQuotaUsage::query()->delete();
     CampaignVariableMapping::query()->delete();
     CampaignRecipient::query()->delete();
     Campaign::query()->delete();
@@ -189,6 +192,39 @@ test('duplicate job execution does not resend an accepted recipient', function (
         ->and(MessageAttempt::query()->where('campaign_recipient_id', $recipient->id)->count())->toBe(1);
 
     Http::assertSentCount(1);
+});
+
+test('recipient delivery is delayed when daily unique recipient quota is exhausted', function () {
+    config([
+        'services.whatsapp.daily_unique_recipient_limit' => 1,
+        'services.whatsapp.daily_unique_recipient_limit_enabled' => true,
+        'services.whatsapp.graph_api_base_url' => 'https://graph.facebook.com/v23.0',
+        'services.whatsapp.phone_number_id' => 'phone-id',
+        'services.whatsapp.access_token' => 'secret-token',
+    ]);
+
+    WhatsappDeliveryQuotaUsage::query()->create([
+        'phone_normalized' => '6281234567899',
+        'campaign_recipient_id' => null,
+        'accepted_at' => now()->subMinute(),
+    ]);
+
+    Http::fake();
+
+    $campaign = deliveryCampaign();
+    $recipient = deliveryRecipient($campaign, 2, 'valid', 'queued', '6281234567890');
+
+    try {
+        app(MessageDeliveryService::class)->deliver($recipient->id);
+        $this->fail('Expected daily quota exception.');
+    } catch (DailyRecipientQuotaExceeded $exception) {
+        expect($exception->delaySeconds)->toBeGreaterThan(0);
+    }
+
+    expect($recipient->refresh()->delivery_status)->toBe(CampaignRecipient::DELIVERY_QUEUED)
+        ->and($recipient->attempt_count)->toBe(0);
+
+    Http::assertNothingSent();
 });
 
 function deliveryCampaign(): Campaign

@@ -4,9 +4,11 @@ namespace App\Http\Controllers\Campaigns;
 
 use App\Http\Controllers\Controller;
 use App\Models\Campaign;
+use App\Models\CampaignRecipient;
 use App\Models\WhatsappTemplate;
 use App\Services\Campaigns\CampaignDeliverySummaryService;
 use App\Services\Campaigns\CampaignPreviewService;
+use App\Services\Campaigns\WhatsappDailyRecipientQuota;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -106,8 +108,12 @@ class CampaignController extends Controller
         return redirect()->route('campaigns.show', $campaign);
     }
 
-    public function show(Campaign $campaign, CampaignPreviewService $previewService, CampaignDeliverySummaryService $summaryService): Response
-    {
+    public function show(
+        Campaign $campaign,
+        CampaignPreviewService $previewService,
+        CampaignDeliverySummaryService $summaryService,
+        WhatsappDailyRecipientQuota $recipientQuota,
+    ): Response {
         $campaign->load('whatsappTemplate:id,name,language_code');
 
         return Inertia::render('campaigns/show', [
@@ -126,6 +132,7 @@ class CampaignController extends Controller
                 'cancelled_at' => $campaign->cancelled_at?->toISOString(),
             ],
             'recipients' => $campaign->recipients()
+                ->where('validation_status', CampaignRecipient::VALIDATION_VALID)
                 ->orderBy('source_row_number')
                 ->paginate(50, [
                     'id',
@@ -143,6 +150,7 @@ class CampaignController extends Controller
                 ])
                 ->withQueryString(),
             'delivery_summary' => $summaryService->summary($campaign),
+            'daily_quota' => $recipientQuota->snapshot(),
             'variable_mappings' => $campaign->variableMappings()
                 ->get(['variable', 'source_type', 'source_column_key', 'fixed_value']),
             'previews' => $previewService->previews($campaign),
