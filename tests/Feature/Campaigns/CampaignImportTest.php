@@ -109,6 +109,26 @@ test('phone validation rejects zero prefix plus prefix letters and duplicates', 
         ->and(CampaignRecipient::query()->where('validation_status', 'duplicate')->count())->toBe(2);
 });
 
+test('unique valid rows remain send eligible when other rows are duplicate', function () {
+    $campaign = Campaign::factory()->create();
+    $file = uploadedCsv('recipients.csv', [
+        ['Nama', 'Whatsapp'],
+        ['Valid', '6281234567890'],
+        ['Duplicate A', '6281234567891'],
+        ['Duplicate B', '6281234567891'],
+    ]);
+
+    $this->post(route('campaigns.import.store', $campaign), [
+        'recipient_file' => $file,
+    ])->assertRedirect(route('campaigns.show', $campaign));
+
+    $campaign->refresh();
+
+    expect($campaign->import_summary['valid_rows'])->toBe(1)
+        ->and($campaign->import_summary['duplicate_rows'])->toBe(2)
+        ->and($campaign->import_summary['send_eligible_rows'])->toBe(1);
+});
+
 test('admin can manually correct detected phone and name columns', function () {
     $campaign = Campaign::factory()->create();
     $file = uploadedCsv('recipients.csv', [

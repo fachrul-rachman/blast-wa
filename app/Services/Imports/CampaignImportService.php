@@ -175,7 +175,7 @@ class CampaignImportService
             'duplicate_rows' => $duplicates,
             'missing_data_rows' => 0,
             'skipped_rows' => 0,
-            'send_eligible_rows' => $duplicates > 0 ? 0 : $valid,
+            'send_eligible_rows' => $valid,
             'phone_column_key' => $phoneColumn,
             'name_column_key' => $nameColumn,
         ];
