@@ -10,6 +10,7 @@ use App\Models\WhatsappDeliveryQuotaUsage;
 use App\Models\WhatsappTemplate;
 use App\Services\Campaigns\DailyRecipientQuotaExceeded;
 use App\Services\Campaigns\MessageDeliveryService;
+use App\Services\Campaigns\WhatsAppMessagingLimitResolver;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
@@ -27,6 +28,7 @@ beforeEach(function () {
     Campaign::query()->delete();
     WhatsappTemplate::query()->delete();
     Cache::flush();
+    config(['services.whatsapp.daily_unique_recipient_limit_source' => 'env']);
 
     actingAs(Admin::factory()->create());
 });
@@ -225,6 +227,60 @@ test('recipient delivery is delayed when daily unique recipient quota is exhaust
         ->and($recipient->attempt_count)->toBe(0);
 
     Http::assertNothingSent();
+});
+
+test('daily quota limit can be resolved from meta messaging limit tier', function () {
+    config([
+        'services.whatsapp.daily_unique_recipient_limit' => 250,
+        'services.whatsapp.daily_unique_recipient_limit_source' => 'meta',
+        'services.whatsapp.daily_unique_recipient_limit_cache_seconds' => 3600,
+        'services.whatsapp.graph_api_base_url' => 'https://graph.facebook.com/v23.0',
+        'services.whatsapp.phone_number_id' => 'phone-id',
+        'services.whatsapp.access_token' => 'secret-token',
+    ]);
+
+    Http::fake([
+        'graph.facebook.com/v23.0/phone-id?fields=whatsapp_business_manager_messaging_limit' => Http::response([
+            'whatsapp_business_manager_messaging_limit' => 'TIER_2K',
+        ]),
+    ]);
+
+    expect(app(WhatsAppMessagingLimitResolver::class)->resolve())->toBe(2000);
+});
+
+test('daily quota limit falls back to configured limit when meta limit request fails', function () {
+    config([
+        'services.whatsapp.daily_unique_recipient_limit' => 250,
+        'services.whatsapp.daily_unique_recipient_limit_source' => 'meta',
+        'services.whatsapp.daily_unique_recipient_limit_cache_seconds' => 3600,
+        'services.whatsapp.graph_api_base_url' => 'https://graph.facebook.com/v23.0',
+        'services.whatsapp.phone_number_id' => 'phone-id',
+        'services.whatsapp.access_token' => 'secret-token',
+    ]);
+
+    Http::fake([
+        'graph.facebook.com/v23.0/phone-id?fields=whatsapp_business_manager_messaging_limit' => Http::response([], 500),
+    ]);
+
+    expect(app(WhatsAppMessagingLimitResolver::class)->resolve())->toBe(250);
+});
+
+test('recipient job reschedules itself when daily quota is exhausted', function () {
+    Queue::fake();
+
+    $deliveryService = \Mockery::mock(MessageDeliveryService::class);
+    $deliveryService
+        ->shouldReceive('deliver')
+        ->once()
+        ->with(123)
+        ->andThrow(new DailyRecipientQuotaExceeded(3600));
+
+    (new SendCampaignRecipientJob(123))->handle($deliveryService);
+
+    Queue::assertPushed(
+        SendCampaignRecipientJob::class,
+        fn (SendCampaignRecipientJob $job): bool => $job->recipientId === 123,
+    );
 });
 
 function deliveryCampaign(): Campaign

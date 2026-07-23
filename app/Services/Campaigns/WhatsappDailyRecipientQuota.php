@@ -10,6 +10,8 @@ use Illuminate\Support\Facades\DB;
 
 class WhatsappDailyRecipientQuota
 {
+    public function __construct(private readonly WhatsAppMessagingLimitResolver $limitResolver) {}
+
     public function assertAvailable(string $phoneNormalized): void
     {
         if (! (bool) config('services.whatsapp.daily_unique_recipient_limit_enabled', true)) {
@@ -118,7 +120,7 @@ class WhatsappDailyRecipientQuota
 
     private function limit(): int
     {
-        return max(1, (int) config('services.whatsapp.daily_unique_recipient_limit', 250));
+        return $this->limitResolver->resolve();
     }
 
     private function delayUntilNextSlot(CarbonInterface $cutoff): int

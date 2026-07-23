@@ -46,6 +46,8 @@ return [
         'retry_backoff_seconds' => env('WHATSAPP_RETRY_BACKOFF_SECONDS', '60,300,900'),
         'max_attempts' => (int) env('WHATSAPP_MAX_ATTEMPTS', 3),
         'daily_unique_recipient_limit' => (int) env('WHATSAPP_DAILY_UNIQUE_RECIPIENT_LIMIT', 250),
+        'daily_unique_recipient_limit_source' => env('WHATSAPP_DAILY_UNIQUE_RECIPIENT_LIMIT_SOURCE', 'meta'),
+        'daily_unique_recipient_limit_cache_seconds' => (int) env('WHATSAPP_DAILY_UNIQUE_RECIPIENT_LIMIT_CACHE_SECONDS', 3600),
         'daily_unique_recipient_limit_enabled' => (bool) env('WHATSAPP_DAILY_UNIQUE_RECIPIENT_LIMIT_ENABLED', true),
     ],
 
